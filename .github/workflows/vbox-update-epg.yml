@@ -1,0 +1,52 @@
+name: Vbox EPG Generator
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"   # Every 10 minutes
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Public Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Checkout Private Repo
+        uses: actions/checkout@v4
+        with:
+          repository: vgit-push/vbox
+          token: ${{ secrets.PRIVATE_REPO_PAT }}
+          path: private-src
+
+      - name: Generate EPG
+        run: |
+          python3 private-src/generate_vbox_epg.py \
+            --days-back 0 \
+            --days-forward 14 \
+            --output vbox_epg.xml \
+            --gz
+
+      - name: Show Stats
+        run: |
+          ls -lh vbox_epg.xml vbox_epg.xml.gz
+          echo "Channels   : $(grep -c '<channel' vbox_epg.xml)"
+          echo "Programmes : $(grep -c '<programme' vbox_epg.xml)"
+
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vbox_epg.xml vbox_epg.xml.gz
+          git diff --staged --quiet && exit 0
+          git commit -m "EPG Update $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
